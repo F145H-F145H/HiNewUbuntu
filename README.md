@@ -5,7 +5,7 @@
 
 ```
 sudo apt install -y git
-git clone https://github.com/F145H-F145H/HiNewUbuntu.git
+git clone https://bgithub.xyz/F145H-F145H/HiNewUbuntu.git
 cd HiNewUbuntu
 sudo ./install.sh
 ```

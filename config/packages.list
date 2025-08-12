@@ -7,7 +7,6 @@ lzop
 unzip
 unrar
 tar
-sasquatch
 
 vim
 tree
@@ -59,8 +58,6 @@ openjdk-21-jdk
 
 # 调试工具
 
-code
-
 gdb
 gdb-multiarch
 gdbserver
@@ -79,32 +76,11 @@ setserial
 
 # 输入法
 
-m17n
-m17n-db
-
 ibus-libpinyin
-ibus-table-cangjie-big
-ibus-table-cangjie3
-ibus-table-cangjie5
-ibus-table-wubi
 
 # 桌面环境
 
 xdg-utils
-i3xrocks-app-launcher
-i3xrocks-focused-window-name
-i3xrocks-info
-i3xrocks-memory
-i3xrocks-nm-vpn
-i3xrocks-rofication
-regolith-desktop
-regolith-look-ayu
-regolith-look-ayu-dark
-regolith-look-ayu-mirage
-regolith-look-default
-regolith-look-default-loader
-regolith-look-lascaille
-regolith-session-flashback
 
 zsh
 ohh-my-zsh
