@@ -38,7 +38,7 @@ gpg --dearmor | sudo tee /usr/share/keyrings/regolith-archive-keyring.gpg > /dev
 # 2. 添加软件源
 echo "正在添加Regolith软件源..."
 echo deb "[arch=amd64 signed-by=/usr/share/keyrings/regolith-archive-keyring.gpg] \
-https://archive.regolith-desktop.com/ubuntu/stable plucky v3.3" | \
+https://archive.regolith-desktop.com/ubuntu/stable noble v3.3" | \
 sudo tee /etc/apt/sources.list.d/regolith.list
 
 # 3. 更新软件包列表
