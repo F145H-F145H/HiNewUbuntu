@@ -21,6 +21,10 @@ wget
 axel
 net-tools
 
+git
+ruby
+ruby-bundler
+
 xbindkeys
 glances
 

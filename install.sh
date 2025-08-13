@@ -11,7 +11,7 @@ set -euo pipefail  # 严格错误处理：命令失败/未定义变量/管道错
 # ----------------------------
 LOG_FILE="./install_$(date +%Y%m%d_%H%M%S).log"  # 日志文件路径
 NEED_ROOT=true                                   # 全局是否需要root权限
-MODULES=("aptpackages" "config")                 # 启用的模块列表
+MODULES=("config" "aptpackages" "rubypackages" "gitpackages")                 # 启用的模块列表
 
 TARGET_DIR="/opt"                                # 软件安装地址
 TARGET_USER="f145h"                              # 用户名 必须更改
@@ -105,6 +105,18 @@ run_cmd() {
     fi
 }
 
+# 配置文件设置模块
+module_config() {
+    log "INFO" "===== 开始配置环境 ====="
+    
+    # 创建用户目录下的配置文件
+    run_cmd "sudo mkdir -p $TARGET_DIR" true "创建软件目录"
+
+    # 设置文件权限
+    run_cmd "chown $TARGET_USER:$TARGET_GROUP $TARGET_DIR" true "设置所有权"
+    run_cmd "chmod 775 $TARGET_DIR" true "设置目录权限"
+}
+
 # apt 软件包下载
 module_aptpackages() {
     log "INFO" "===== 开始安装系统依赖 ====="
@@ -138,16 +150,191 @@ module_aptpackages() {
     run_cmd "apt clean" true "清理软件包缓存"
 }
 
-# 配置文件设置模块
-module_config() {
-    log "INFO" "===== 开始配置环境 ====="
+moudle_rubypackages() {
+    log "INFO" "===== 开始安装Ruby包 ====="
     
-    # 创建用户目录下的配置文件
-    run_cmd "sudo mkdir -p $TARGET_DIR" true "创建软件目录"
+    # 检查包列表文件
+    local pkg_list_file="./config/rubypackages.list"
+    if [[ ! -f "$pkg_list_file" ]]; then
+        log "ERROR" "软件包列表文件 $pkg_list_file 不存在"
+        return 1
+    fi
 
-    # 设置文件权限
-    run_cmd "chown $TARGET_USER:$TARGET_GROUP $TARGET_DIR" true "设置所有权"
-    run_cmd "chmod 775 $TARGET_DIR" true "设置目录权限"
+    local packages=$(grep -vE '^\s*#' "$pkg_list_file" | tr '\n' ' ')
+
+    if [[ -z "$packages" ]]; then
+        log "WARN" "ruby软件包列表文件中未找到有效软件包"
+        return 0
+    fi
+
+    log "INFO" "检测到以下软件包需要安装:"
+    log "INFO" "$packages"
+
+    run_cmd "ruby install -y $packages" true "安装ruby包"
+}
+
+# GitHub项目安装模块
+module_gitpackages() {
+    log "INFO" "===== 开始安装GitHub项目 ====="
+    
+    # 检查仓库列表文件
+    local repo_list_file="./config/gitrepos.list"
+    if [[ ! -f "$repo_list_file" ]]; then
+        log "WARN" "Git仓库列表文件 $repo_list_file 不存在，跳过此模块"
+        return 0
+    fi
+
+    # 读取并处理仓库列表
+    local line_count=0
+    while IFS= read -r line; do
+        # 跳过注释和空行
+        [[ "$line" =~ ^# ]] || [[ -z "$line" ]] && continue
+        ((line_count++))
+        
+        # 分割行内容
+        IFS='|' read -ra parts <<< "$line"
+        if [ ${#parts[@]} -lt 4 ]; then
+            log "ERROR" "第 $line_count 行格式错误: $line"
+            log "INFO" "正确格式: 仓库URL|安装目录|安装类型|分支/标签|安装命令(可选)"
+            continue
+        fi
+        
+        local repo_url="${parts[0]}"
+        local install_dir="${parts[1]}"
+        local install_type="${parts[2]}"
+        local ref="${parts[3]}"
+        local custom_cmd="${parts[4]:-}"
+        
+        # 处理安装目录
+        if [[ "$install_dir" == "DEFAULT" ]]; then
+            repo_name=$(basename "$repo_url" .git)
+            install_dir="$TARGET_DIR/$repo_name"
+        fi
+        
+        # 判断是否需要特权
+        local need_priv=false
+        if [[ "$install_dir" == /usr/*]]; then
+            need_priv=true
+        fi
+        
+        # 克隆或更新仓库
+        local clone_cmd="
+if [ ! -d \"$install_dir\" ]; then
+    git clone \"$repo_url\" \"$install_dir\" || { echo '克隆失败'; exit 1; }
+    cd \"$install_dir\"
+else
+    cd \"$install_dir\"
+    git fetch --all
+fi
+"
+        run_cmd "$clone_cmd" "$need_priv" "克隆/更新仓库: $(basename "$repo_url" .git) 到 $install_dir"
+        
+        # 检出指定引用
+        if [[ -n "$ref" && "$ref" != "DEFAULT" ]]; then
+            run_cmd "cd \"$install_dir\" && git checkout \"$ref\"" "$need_priv" "检出 $ref"
+        fi
+        
+        # 执行安装步骤
+        case "$install_type" in
+            "CLONE_ONLY")
+                log "SUCCESS" "安装完成: 仅克隆仓库"
+                ;;
+                
+            "RUN_SCRIPT")
+                if [[ -z "$custom_cmd" ]]; then
+                    log "WARN" "未指定安装脚本，尝试查找常见安装脚本"
+                    find_and_run_install_script "$install_dir" "$need_priv"
+                else
+                    run_install_script "$install_dir" "$custom_cmd" "$need_priv"
+                fi
+                ;;
+                
+            "MAKE_INSTALL")
+                compile_and_install "$install_dir" "$need_priv" "$custom_cmd"
+                ;;
+                
+            "CUSTOM")
+                if [[ -z "$custom_cmd" ]]; then
+                    log "ERROR" "自定义安装类型需要指定安装命令"
+                else
+                    run_cmd "cd \"$install_dir\" && $custom_cmd" "$need_priv" "执行自定义命令"
+                fi
+                ;;
+                
+            *)
+                log "ERROR" "未知安装类型: $install_type"
+                ;;
+        esac
+        
+    done < "$repo_list_file"
+}
+
+# 查找并运行安装脚本
+find_and_run_install_script() {
+    local install_dir=$1
+    local need_priv=$2
+    
+    local possible_scripts=("install.sh" "setup.sh" "bootstrap.sh" "configure" "autogen.sh")
+    
+    for script in "${possible_scripts[@]}"; do
+        if [[ -f "$install_dir/$script" ]]; then
+            run_install_script "$install_dir" "./$script" "$need_priv"
+            return
+        fi
+    done
+    
+    log "ERROR" "未找到安装脚本，请在配置中指定"
+}
+
+# 运行安装脚本
+run_install_script() {
+    local install_dir=$1
+    local script=$2
+    local need_priv=$3
+    
+    # 添加执行权限
+    run_cmd "cd \"$install_dir\" && chmod +x \"$script\"" "$need_priv" "添加执行权限"
+    
+    # 运行脚本
+    run_cmd "cd \"$install_dir\" && ./\"$script\"" "$need_priv" "运行安装脚本"
+}
+
+# 编译并安装
+compile_and_install() {
+    local install_dir=$1
+    local need_priv=$2
+    local configure_flags=$3
+    
+    # 配置步骤
+    local configure_cmd="./configure"
+    if [[ -n "$configure_flags" ]]; then
+        configure_cmd+=" $configure_flags"
+    fi
+    
+    if [[ -f "$install_dir/configure" ]]; then
+        run_cmd "cd \"$install_dir\" && $configure_cmd" "$need_priv" "配置编译选项"
+    elif [[ -f "$install_dir/CMakeLists.txt" ]]; then
+        run_cmd "cd \"$install_dir\" && mkdir -p build && cd build && cmake .." "$need_priv" "CMake配置"
+    else
+        log "WARN" "未找到标准配置脚本，尝试直接编译"
+    fi
+    
+    # 编译步骤
+    if [[ -f "$install_dir/Makefile" ]]; then
+        run_cmd "cd \"$install_dir\" && make -j$(nproc)" "$need_priv" "编译项目"
+    elif [[ -f "$install_dir/build/Makefile" ]]; then
+        run_cmd "cd \"$install_dir/build\" && make -j$(nproc)" "$need_priv" "编译项目"
+    else
+        log "ERROR" "未找到Makefile，无法编译"
+        return
+    fi
+    
+    # 安装步骤
+    if [[ -f "$install_dir/Makefile" ]] && grep -q "install:" "$install_dir/Makefile"; then
+        run_cmd "cd \"$install_dir\" && make install" "$need_priv" "安装项目"
+    else
+        log "WARN" "Makefile中没有install目标，可能需要手动安装"
+    fi
 }
 
 # ----------------------------
