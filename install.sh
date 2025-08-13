@@ -150,7 +150,7 @@ module_aptpackages() {
     run_cmd "apt clean" true "清理软件包缓存"
 }
 
-moudle_rubypackages() {
+module_rubypackages() {
     log "INFO" "===== 开始安装Ruby包 ====="
     
     # 检查包列表文件
@@ -213,7 +213,7 @@ module_gitpackages() {
         
         # 判断是否需要特权
         local need_priv=false
-        if [[ "$install_dir" == /usr/*]]; then
+        if [[ "$install_dir" == /usr/* ]]; then
             need_priv=true
         fi
         
