@@ -170,7 +170,7 @@ module_rubypackages() {
     log "INFO" "检测到以下软件包需要安装:"
     log "INFO" "$packages"
 
-    run_cmd "ruby install -y $packages" true "安装ruby包"
+    run_cmd "gem install $packages" true "安装ruby包"
 }
 
 # GitHub项目安装模块
